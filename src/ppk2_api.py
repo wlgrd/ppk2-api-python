@@ -69,12 +69,16 @@ class PPK2_API():
         self.MEAS_ADC = self._generate_mask(14, 0)
         self.MEAS_RANGE = self._generate_mask(3, 14)
         self.MEAS_LOGIC = self._generate_mask(8, 24)
+        self.COUNT = self._generate_mask(6, 18)
 
         self.prev_rolling_avg = None
         self.prev_rolling_avg4 = None
         self.prev_range = None
 
         self.mode = None
+        self.expected_count = 0
+        self.sample_count = 0
+        self.usb_buffer_transfer_count = 0
 
         # adc measurement buffer remainder and len of remainder
         self.remainder = {"sequence": b'', "len": 0}
@@ -166,12 +170,26 @@ class PPK2_API():
 
     def _handle_raw_data(self, adc_value):
         """Convert raw value to analog value"""
+        if((self.sample_count % (2048*10) == 0)):
+            print(f'USB buffer transfers: {self.usb_buffer_transfer_count}')
+            self.usb_buffer_transfer_count += 10
         current_measurement_range = min(self._get_masked_value(
             adc_value, self.MEAS_RANGE), 4)  # 5 is the number of parameters
         adc_result = self._get_masked_value(adc_value, self.MEAS_ADC) * 4
         bits = self._get_masked_value(adc_value, self.MEAS_LOGIC)
+        count = self._get_masked_value(adc_value, self.COUNT)
+        if(count != self.expected_count):
+            print(f'{"!"*20}')
+            print(f'Wrong counter value, epected {self.expected_count}, got: {count}')
+            print(f'{"!"*20}')
+            # Reset expected 
+            self.expected_count = count
+        self.expected_count += 1
+        if(self.expected_count >= 64):
+            self.expected_count = 0
         analog_value = self.get_adc_result(
             current_measurement_range, adc_result) * 10**6
+        self.sample_count += 1
 
         return analog_value
 
